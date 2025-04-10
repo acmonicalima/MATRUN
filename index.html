@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Mat Run</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Arial', sans-serif;
+      overflow: hidden;
+    }
+    canvas {
+      background: linear-gradient(#87CEEB, #fff);
+      display: block;
+      margin: 0 auto;
+    }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #000;
+      font-size: 20px;
+      background: rgba(255,255,255,0.7);
+      padding: 10px;
+      border-radius: 10px;
+    }
+    #questionBox {
+      position: absolute;
+      top: 20%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+      display: none;
+      text-align: center;
+    }
+    .option {
+      background: #eee;
+      padding: 10px;
+      margin: 5px;
+      cursor: pointer;
+      border-radius: 5px;
+      transition: 0.2s;
+    }
+    .option:hover {
+      background: #ccc;
+    }
+    #logo {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 150px;
+    }
+    #gameOverScreen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      display: none;
+    }
+    #restartBtn {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
+      border: none;
+      background: #4CAF50;
+      color: white;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+  <img id="logo" src="mat run.png" alt="Mat Run Logo">
+  <div id="ui">Vidas: <span id="vidas">3</span> | Pontos: <span id="pontos">0</span></div>
+  <div id="questionBox">
+    <div id="questionText"></div>
+    <div id="options"></div>
+  </div>
+  <div id="gameOverScreen">
+    <div>Game Over</div>
+    <button id="restartBtn">Recomeçar</button>
+  </div>
+  <canvas id="gameCanvas" width="900" height="500"></canvas>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    let player = { x: 50, y: 0, width: 40, height: 40, dy: 0, onGround: false };
+    let gravity = 0.6;
+    let jumpPower = -10;
+    let groundY = canvas.height - 60;
+    let obstacles = [];
+    let boxes = [];
+    let boxInterval = 300;
+    let obstacleInterval = 180;
+    let frames = 0;
+    let speed = 4;
+    let pontos = 0;
+    let vidas = 3;
+    let questionIndex = 0;
+    let currentQuestion = null;
+    let answering = false;
+
+    const perguntas = [];
+    for (let i = 0; i < 25; i++) {
+      let a = Math.floor(Math.random() * 20);
+      let b = Math.floor(Math.random() * 20);
+      perguntas.push({
+        pergunta: `${a} + ${b} = ?`,
+        opcoes: shuffle([a + b, a + b + 1, a + b - 1]),
+        resposta: a + b
+      });
+    }
+    for (let i = 0; i < 25; i++) {
+      let a = Math.floor(Math.random() * 50);
+      let b = Math.floor(Math.random() * 30);
+      perguntas.push({
+        pergunta: `${a} - ${b} = ?`,
+        opcoes: shuffle([a - b, a - b + 1, a - b - 1]),
+        resposta: a - b
+      });
+    }
+
+    function shuffle(array) {
+      return array.sort(() => Math.random() - 0.5);
+    }
+
+    function drawPlayer() {
+      ctx.fillStyle = 'red';
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+    }
+
+    function drawGround() {
+      ctx.fillStyle = 'green';
+      ctx.fillRect(0, groundY, canvas.width, 60);
+    }
+
+    function drawObstacles() {
+      ctx.fillStyle = 'blue';
+      obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h));
+    }
+
+    function drawBoxes() {
+      ctx.fillStyle = 'gold';
+      boxes.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
+    }
+
+    function update() {
+      frames++;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      drawGround();
+      drawPlayer();
+      drawObstacles();
+      drawBoxes();
+
+      // Movimento jogador
+      player.y += player.dy;
+      player.dy += gravity;
+      if (player.y + player.height >= groundY) {
+        player.y = groundY - player.height;
+        player.dy = 0;
+        player.onGround = true;
+      } else {
+        player.onGround = false;
+      }
+
+      // Obstáculos
+      if (frames % obstacleInterval === 0) {
+        obstacles.push({ x: canvas.width, y: groundY - 20, w: 20, h: 20 });
+      }
+      obstacles.forEach(o => o.x -= speed);
+      obstacles = obstacles.filter(o => o.x + o.w > 0);
+
+      // Caixas
+      if (frames % boxInterval === 0 && questionIndex < perguntas.length) {
+        boxes.push({ x: canvas.width, y: groundY - 120, w: 30, h: 30, id: questionIndex });
+      }
+      boxes.forEach(b => b.x -= speed);
+      boxes = boxes.filter(b => b.x + b.w > 0);
+
+      // Colisões obstáculos
+      obstacles.forEach(o => {
+        if (
+          player.x < o.x + o.w &&
+          player.x + player.width > o.x &&
+          player.y < o.y + o.h &&
+          player.y + player.height > o.y
+        ) {
+          obstacles = obstacles.filter(obj => obj !== o);
+          vidas--;
+          updateUI();
+          if (vidas <= 0) endGame();
+        }
+      });
+
+      // Colisão com caixa
+      if (!answering) {
+        boxes.forEach(b => {
+          if (
+            player.x < b.x + b.w &&
+            player.x + player.width > b.x &&
+            player.y < b.y + b.h &&
+            player.y + player.height > b.y
+          ) {
+            currentQuestion = perguntas[b.id];
+            showQuestion();
+            answering = true;
+          }
+        });
+      }
+
+      requestAnimationFrame(update);
+    }
+
+    function showQuestion() {
+      document.getElementById('questionBox').style.display = 'block';
+      document.getElementById('questionText').innerText = currentQuestion.pergunta;
+      const options = document.getElementById('options');
+      options.innerHTML = '';
+      currentQuestion.opcoes.forEach(op => {
+        const div = document.createElement('div');
+        div.className = 'option';
+        div.innerText = op;
+        div.onclick = () => {
+          if (op === currentQuestion.resposta) {
+            pontos++;
+            questionIndex++;
+            answering = false;
+            document.getElementById('questionBox').style.display = 'none';
+            updateUI();
+          } else {
+            vidas--;
+            updateUI();
+            if (vidas <= 0) endGame();
+          }
+        }
+        options.appendChild(div);
+      });
+    }
+
+    function updateUI() {
+      document.getElementById('pontos').innerText = pontos;
+      document.getElementById('vidas').innerText = vidas;
+    }
+
+    function endGame() {
+      document.getElementById('gameOverScreen').style.display = 'flex';
+    }
+
+    document.getElementById('restartBtn').onclick = () => {
+      location.reload();
+    };
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && player.onGround) {
+        player.dy = jumpPower;
+      }
+    });
+
+    update();
+  </script>
+</body>
+</html>
